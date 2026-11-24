@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>HRMS – How It Was Built and How It Works</title>
+<style>
+  @page { size: A4; margin: 10mm 12mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; font-size: 9pt; line-height: 1.3; color: #1f2937; margin: 0; }
+  h1 { font-size: 15pt; margin: 0 0 2px; color: #312e81; }
+  .sub { color: #6b7280; margin: 0 0 6px; font-size: 9pt; }
+  h2 { font-size: 10.5pt; color: #4338ca; margin: 8px 0 3px; padding-bottom: 2px; border-bottom: 1.5px solid #e0e7ff; }
+  p { margin: 0 0 5px; }
+  ul, ol { margin: 0 0 5px; padding-left: 17px; }
+  li { margin-bottom: 0.5px; }
+  table { width: 100%; border-collapse: collapse; margin: 3px 0 6px; font-size: 8.5pt; }
+  th, td { border: 1px solid #e5e7eb; padding: 2px 5px; text-align: left; vertical-align: top; }
+  th { background: #eef2ff; color: #3730a3; font-weight: 600; }
+  code { font-family: Consolas, monospace; font-size: 8.6pt; background: #f3f4f6; padding: 0 3px; border-radius: 3px; }
+  .flow { display: flex; align-items: stretch; gap: 4px; margin: 4px 0 7px; font-size: 8.6pt; }
+  .flow div { flex: 1; border: 1px solid #c7d2fe; background: #f5f7ff; border-radius: 6px; padding: 4px 5px; text-align: center; }
+  .flow b { display: block; color: #3730a3; font-size: 9pt; }
+  .flow span.arrow { flex: 0 0 auto; align-self: center; color: #6366f1; font-weight: 700; border: none; background: none; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .note { background: #f9fafb; border-left: 3px solid #6366f1; padding: 4px 8px; margin: 4px 0 6px; }
+  .page-break { break-before: page; }
+</style>
+</head>
+<body>
+
+<h1>HRMS: How It Was Built and How It Works</h1>
+<p class="sub">Human Resource Management System · FastAPI + MySQL backend · React frontend · JWT + role-based access</p>
+
+<h2>1. What the system does</h2>
+<p>HRMS lets a company manage <b>employees, attendance, leave, payroll and salary slips</b> from one web app.
+There are three roles: <b>Admin</b> (everything), <b>HR</b> (people operations) and <b>Employee</b> (self-service).
+Each role sees only the menus and data it is allowed to.</p>
+
+<h2>2. Technology used</h2>
+<table>
+  <tr><th style="width:17%">Part</th><th style="width:40%">Technology</th><th>Why</th></tr>
+  <tr><td>Backend</td><td>Python, FastAPI, SQLAlchemy, Alembic, Pydantic</td><td>Fast REST APIs, automatic Swagger docs, safe database access, input validation</td></tr>
+  <tr><td>Database</td><td>MySQL (SQLite for quick local runs and tests)</td><td>Relational data with keys and constraints; Alembic creates and versions the tables</td></tr>
+  <tr><td>Frontend</td><td>React, Vite, Tailwind CSS, React Query, Recharts</td><td>Fast single-page app, clean UI, automatic data caching, dashboard charts</td></tr>
+  <tr><td>Security / files</td><td>JWT (PyJWT), bcrypt, ReportLab, Jinja2</td><td>Login tokens, password hashing, PDF payslips, email templates</td></tr>
+</table>
+
+<h2>3. How I built it (step by step)</h2>
+<ol>
+  <li><b>Designed the database</b>: 24 tables (users, roles, employees, attendance, leave, payroll, payslips, audit logs ...) as SQLAlchemy models, then generated the MySQL schema with an Alembic migration.</li>
+  <li><b>Built security first</b>: login with bcrypt-hashed passwords, JWT tokens, and a permission system (25 permissions grouped into roles).</li>
+  <li><b>Wrote the business logic</b> as <i>services</i>: employees, attendance, leave, payroll, notifications, reports and audit.</li>
+  <li><b>Exposed it as REST APIs</b>: each module has a router under <code>/api/v1/...</code>, and each route declares the permission it needs.</li>
+  <li><b>Built the React frontend</b>: login page, a role-based sidebar, an admin panel and an employee panel.</li>
+  <li><b>Added seed data, tests and deliverables</b>: a demo dataset, 29 automated API tests, a Postman collection, a DB dump, screenshots and a sample payslip.</li>
+</ol>
+
+<h2>4. Architecture: how a request travels</h2>
+<div class="flow">
+  <div><b>React page</b>user clicks a button</div><span class="arrow">→</span>
+  <div><b>Axios client</b>adds JWT, calls <code>/api/v1/...</code></div><span class="arrow">→</span>
+  <div><b>Router</b>checks token + permission, validates input</div><span class="arrow">→</span>
+  <div><b>Service</b>applies business rules, writes audit log</div><span class="arrow">→</span>
+  <div><b>SQLAlchemy</b>saves to MySQL in one transaction</div>
+</div>
+<p>The answer comes back as JSON, and React Query stores it and refreshes the screen. Backend folders follow the same layers:
+<code>routers/</code> (URLs) → <code>services/</code> (logic) → <code>models/</code> (tables), with <code>schemas/</code> for request/response shapes.</p>
+
+<div class="note"><b>Example: employee clicks "Check in"</b><br>
+<b>Frontend:</b> <code>CheckInWidget</code> calls <code>POST /api/v1/attendance/check-in</code> with the token.<br>
+<b>Backend:</b> the router confirms the user is logged in and has <code>attendance:self</code>. <code>attendance_service.check_in()</code> rejects a second check-in for the same day
+(the database also has a unique rule: one row per employee per day), saves the time, marks the employee late if after 9:45, and writes an audit entry.<br>
+<b>Result:</b> the widget switches to "Check out", and at check-out the worked hours are calculated automatically.</div>
+
+<h2>5. Login and security: how it works</h2>
+<ol>
+  <li>The user logs in with email + password. The backend compares against the <b>bcrypt hash</b>; plain passwords are never stored.</li>
+  <li>The backend returns a short-lived <b>access token (JWT, 30 min)</b> and sets a <b>refresh token</b> in a secure HttpOnly cookie that JavaScript cannot read.</li>
+  <li>The frontend keeps the access token <b>in memory only</b> and sends it on every request as <code>Authorization: Bearer &lt;token&gt;</code>.</li>
+  <li>When the token expires, the frontend silently calls <code>/auth/refresh</code> to get a new one, so the user stays logged in. Logout or a password change revokes all sessions.</li>
+  <li>Every API checks a <b>permission</b> (for example <code>payroll:process</code>). Admin can create roles and tick permissions in the UI, and changes apply immediately.</li>
+  <li>Extra protection: 5 wrong passwords lock the account for 15 minutes; inputs are validated; uploads are checked by type, content and size (5 MB).</li>
+</ol>
+
+<h2>6. The main modules and their APIs</h2>
+<table>
+  <tr><th style="width:15%">Module</th><th style="width:33%">Key APIs</th><th>How it works</th></tr>
+  <tr><td>Employees</td><td><code>GET/POST /employees</code>, <code>PUT /employees/{id}</code>, <code>/deactivate</code>, <code>/salary</code>, <code>/documents</code></td>
+      <td>Onboarding creates the login account, profile, salary structure and leave balances in one step, then emails a welcome message. Deactivation is a soft delete: login is blocked and history is kept.</td></tr>
+  <tr><td>Attendance</td><td><code>/attendance/check-in</code>, <code>/check-out</code>, <code>/me</code>, <code>/daily</code>, <code>/summary</code>, <code>/override</code></td>
+      <td>8+ hours = present, 4+ hours = half day, less = absent. HR can correct any day with a reason (audited). A monthly summary shows present, absent, leave, late and hours.</td></tr>
+  <tr><td>Leave</td><td><code>POST /leaves</code>, <code>/preview</code>, <code>/{id}/approve</code>, <code>/reject</code>, <code>/cancel</code>, <code>/balances/me</code></td>
+      <td>Counts only working days (no weekends or holidays). On approval, days are taken from the balance; <b>extra days become Loss of Pay (LOP)</b>. Overlaps and self-approval are blocked.</td></tr>
+  <tr><td>Payroll</td><td><code>POST /payroll/runs</code>, <code>/{id}/lock</code>, <code>/{id}/credit</code>, <code>/payslips/{id}/adjustments</code></td>
+      <td><b>Draft → Locked → Paid.</b> Salary is calculated from attendance + leave. HR can add bonuses or deductions in draft. Locking freezes that month and creates PDF payslips; "credit" simulates the bank transfer.</td></tr>
+  <tr><td>Payslips</td><td><code>GET /payroll/payslips/me</code>, <code>/payslips/{id}/pdf</code></td>
+      <td>A ReportLab PDF with employee details, earnings, deductions and net pay in words. Employees download only their own; Admin sees all.</td></tr>
+  <tr><td>Notifications</td><td><code>/email-templates</code>, <code>/email-logs</code>, <code>/notifications</code></td>
+      <td>Emails for onboarding, leave, payslip and payroll use editable templates. Every email is logged; it is sent via SMTP when configured.</td></tr>
+  <tr><td>Reports</td><td><code>/reports/attendance</code>, <code>/leave</code>, <code>/payroll</code> + <code>?format=csv|pdf</code></td>
+      <td>Filter by date range and department, view on screen, export to CSV or PDF.</td></tr>
+  <tr><td>Admin &amp; audit</td><td><code>/roles</code>, <code>/users/{id}/role</code>, <code>/audit-logs</code>, <code>/dashboard/admin</code></td>
+      <td>Role and permission management, organisation settings, and a <b>read-only audit log</b> of every critical action (who, what, when, IP, before/after).</td></tr>
+</table>
+
+<h2>7. Payroll formula (simple version)</h2>
+<p><b>Per-day salary</b> = monthly gross ÷ working days in the month. &nbsp;
+<b>LOP deduction</b> = per-day salary × LOP days (absent days without leave + unpaid leave).<br>
+<b>Net salary</b> = gross earnings + bonuses − (LOP + Provident Fund 12% of basic + Professional Tax ₹200 + TDS + other deductions).
+New joiners and leavers are paid only for the days they were employed in that month.</p>
+
+<h2>8. Frontend: how the screens work</h2>
+<div class="two">
+<ul>
+  <li><b>AuthContext</b> remembers the logged-in user and their permissions. <code>can('payroll:view')</code> decides which menus and buttons appear.</li>
+  <li><b>api/client.js</b> (Axios) adds the token to every call and refreshes it automatically on expiry.</li>
+  <li><b>React Query hooks</b> (<code>useApi</code>, <code>useAction</code>) load data, show spinners, display success/error messages and refresh lists after changes.</li>
+</ul>
+<ul>
+  <li><b>Admin panel</b>: dashboard charts, employees, attendance board, leave approvals, payroll, reports, roles, email center, audit logs, settings.</li>
+  <li><b>Employee panel</b>: check-in/out, attendance calendar, apply and track leave, payslip download, profile and documents.</li>
+  <li>The Vite dev server forwards <code>/api</code> to the backend (port 8000); the UI runs on port 5173.</li>
+</ul>
+</div>
+
+<h2>9. Data safety and testing</h2>
+<ul>
+  <li>Each action runs as <b>one database transaction</b>: the change, its audit entry and its email are saved together or not at all.</li>
+  <li>Locked payroll months cannot be changed (the API returns HTTP 423). Payslips keep a snapshot of employee details.</li>
+  <li><b>29 automated tests</b> check login, permissions, duplicate check-in, leave/LOP, payroll maths, locking, file upload safety and the audit log.</li>
+</ul>
+
+<h2>10. How to run</h2>
+<p><b>Backend:</b> <code>cd BackEnd</code> → <code>venv\Scripts\activate</code> → <code>alembic upgrade head</code> → <code>python -m app.seed</code> → <code>uvicorn app.main:app --port 8000</code> (API docs at <code>localhost:8000/docs</code>)<br>
+<b>Frontend:</b> <code>cd FrontEnd</code> → <code>npm install</code> → <code>npm run dev</code> → open <code>localhost:5173</code><br>
+<b>Demo logins:</b> admin@example.com / Admin@123 · hr@example.com / Hr@12345 · rahul.verma@example.com / Employee@123</p>
+
+</body>
+</html>

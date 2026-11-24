@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+BackEnd/venv/
+BackEnd/.env
+BackEnd/hrms_dev.db
+BackEnd/uploads/*
+!BackEnd/uploads/.gitkeep
+
+# Node
+FrontEnd/node_modules/
+FrontEnd/dist/
+FrontEnd/.env
+FrontEnd/.env.local
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local tooling
+.claude/
